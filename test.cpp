@@ -96,9 +96,6 @@ int main() {
         return 1;
     }
 
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-    std::cout << std::endl << std::endl;
-
     return 0;
 }
 
