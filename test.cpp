@@ -2,7 +2,11 @@
 #include <string>
 #include <unordered_set>
 #include <curl/curl.h>
+#include <thread>
 #include <nlohmann/json.hpp>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -11,6 +15,12 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* use
     userp->append(static_cast<char*>(contents), totalSize);
     return totalSize;
 }
+
+struct TransitPrediction {
+    std::string vehicleId;
+    time_t expectedArrival;
+    std::string stationName;
+};
 
 int main() {
     CURL* curl = curl_easy_init();
@@ -27,7 +37,7 @@ int main() {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
     
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-
+    
     CURLcode res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
 
@@ -39,27 +49,42 @@ int main() {
     try {
         json data = json::parse(readBuffer);
 
-        std::unordered_set<std::string> uniqueTrains;
+        std::vector<TransitPrediction> uniqueTrains;
 
         for (const auto& item : data) {
-            if (item.contains("vehicleId") && item.contains("currentLocation")) {
-                std::string vehicleId = item["vehicleId"];
-                std::string currentLocation = item["currentLocation"];
-                std::string destination = item.value("destinationName", "Unknown Destination");
-                int timeToStation = item.value("timeToStation", -1);
+            if (item.contains("vehicleId") && item.contains("stationName")) {
+                TransitPrediction pred;
 
-                if (uniqueTrains.find(vehicleId) == uniqueTrains.end()) {
-                    uniqueTrains.insert(vehicleId);
-                    
-                    std::cout << "Train ID: " << vehicleId 
-                              << " | Location: " << currentLocation 
-                              << " (Heading to " << destination
-                              << " | Time to Station " << timeToStation 
-                              << std::endl;
+                pred.vehicleId = item["vehicleId"];
+                pred.stationName = item["stationName"];
+                
+                std::tm expectedArrival;
+                std::istringstream ss{(std::string)item["expectedArrival"]};
+                ss >> std::get_time(&expectedArrival, "%Y-%m-%dT%H:%M:%S"); // Doesn't account for UTC properly, not super important though (?)
+                pred.expectedArrival = std::mktime(&expectedArrival);
+                
+                auto it = std::find_if(uniqueTrains.begin(), uniqueTrains.end(), [pred](const TransitPrediction& t) {
+                    return t.vehicleId == pred.vehicleId;
+                });
+
+                if (it != uniqueTrains.end() ) {
+                    if (it->expectedArrival < pred.expectedArrival)
+                        continue;
+                    it->expectedArrival = pred.expectedArrival;
+                    it->stationName = pred.stationName;
+                } else {
+                    uniqueTrains.push_back(pred);
                 }
             } else {
                 std::cout << "Unrecognised Item [" << item << "]" << std::endl;
             }
+        }
+        
+        for (const auto & pred : uniqueTrains) {
+            std::cout << "Train ID: " << pred.vehicleId 
+                    << " | Arriving at Station: " << pred.stationName 
+                    << " | Expected at " << std::asctime(localtime(&pred.expectedArrival)) // Says localtime but is actually UTC (see above)
+            ;
         }
 
         if (uniqueTrains.empty()) {
@@ -70,6 +95,9 @@ int main() {
         std::cerr << "JSON Parsing error: " << e.what() << std::endl;
         return 1;
     }
+
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::cout << std::endl << std::endl;
 
     return 0;
 }
