@@ -22,6 +22,14 @@ struct TransitPrediction {
     std::string stationName;
 };
 
+std::time_t tm_to_utc(std::tm* time_struct) {
+#if defined(_WIN32) || defined(_WIN64)
+    return _mkgmtime(time_struct);
+#else
+    return timegm(time_struct); // POSIX standard
+#endif
+}
+
 int main() {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -60,12 +68,18 @@ int main() {
                 
                 std::tm expectedArrival;
                 std::istringstream ss{(std::string)item["expectedArrival"]};
-                ss >> std::get_time(&expectedArrival, "%Y-%m-%dT%H:%M:%S"); // Doesn't account for UTC properly, not super important though (?)
-                pred.expectedArrival = std::mktime(&expectedArrival);
+                ss >> std::get_time(&expectedArrival, "%Y-%m-%dT%H:%M:%S");
+                pred.expectedArrival = tm_to_utc(&expectedArrival);
                 
                 auto it = std::find_if(uniqueTrains.begin(), uniqueTrains.end(), [pred](const TransitPrediction& t) {
                     return t.vehicleId == pred.vehicleId;
                 });
+                
+                time_t currentTime = time(NULL);
+                currentTime = tm_to_utc(gmtime(&currentTime)); // To get around UTC BS
+                
+                if (pred.expectedArrival < currentTime)
+                    continue;
 
                 if (it != uniqueTrains.end() ) {
                     if (it->expectedArrival < pred.expectedArrival)
