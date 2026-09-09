@@ -76,7 +76,7 @@ int main() {
                 });
                 
                 time_t currentTime = time(NULL);
-                currentTime = tm_to_utc(gmtime(&currentTime)); // To get around UTC BS
+                currentTime = tm_to_utc(gmtime(&currentTime));
                 
                 if (pred.expectedArrival < currentTime)
                     continue;
@@ -97,7 +97,7 @@ int main() {
         for (const auto & pred : uniqueTrains) {
             std::cout << "Train ID: " << pred.vehicleId 
                     << " | Arriving at Station: " << pred.stationName 
-                    << " | Expected at " << std::asctime(localtime(&pred.expectedArrival)) // Says localtime but is actually UTC (see above)
+                    << " | Expected at " << std::asctime(localtime(&pred.expectedArrival))
             ;
         }
 
