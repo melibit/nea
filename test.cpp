@@ -19,6 +19,7 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* use
 struct TransitPrediction {
     std::string vehicleId;
     time_t expectedArrival;
+    time_t timeToLive;
     std::string stationName;
 };
 
@@ -66,21 +67,28 @@ int main() {
                 pred.vehicleId = item["vehicleId"];
                 pred.stationName = item["stationName"];
                 
-                std::tm expectedArrival;
-                std::istringstream ss{(std::string)item["expectedArrival"]};
-                ss >> std::get_time(&expectedArrival, "%Y-%m-%dT%H:%M:%S");
-                pred.expectedArrival = tm_to_utc(&expectedArrival);
-                
+                {
+                    std::tm expectedArrival;
+                    std::istringstream ss{(std::string)item["expectedArrival"]};
+                    ss >> std::get_time(&expectedArrival, "%Y-%m-%dT%H:%M:%S");
+                    pred.expectedArrival = tm_to_utc(&expectedArrival);
+                }
+                {
+                    std::tm timeToLive;
+                    std::istringstream ss{(std::string)item["timeToLive"]};
+                    ss >> std::get_time(&timeToLive, "%Y-%m-%dT%H:%M:%S");
+                    pred.timeToLive = tm_to_utc(&timeToLive);
+                } 
+
+                time_t currentTime = time(NULL);
+                currentTime = tm_to_utc(gmtime(&currentTime));
+                if (pred.timeToLive < currentTime)
+                    continue;
+
                 auto it = std::find_if(uniqueTrains.begin(), uniqueTrains.end(), [pred](const TransitPrediction& t) {
                     return t.vehicleId == pred.vehicleId;
                 });
                 
-                time_t currentTime = time(NULL);
-                currentTime = tm_to_utc(gmtime(&currentTime));
-                
-                if (pred.expectedArrival < currentTime)
-                    continue;
-
                 if (it != uniqueTrains.end() ) {
                     if (it->expectedArrival < pred.expectedArrival)
                         continue;
