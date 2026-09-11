@@ -2,10 +2,8 @@
 #include <string>
 #include <unordered_set>
 #include <curl/curl.h>
-#include <thread>
 #include <nlohmann/json.hpp>
 #include <sstream>
-#include <iomanip>
 #include <algorithm>
 
 using json = nlohmann::json;
