@@ -1,1 +1,5 @@
 *.out
+test-api
+test-graphics
+.clj-kondo/*
+.lsp/*
