@@ -199,8 +199,6 @@ int main() {
             }
         }
         
-        std::cout << width << height << " " << img.width() << img.height() << std::endl;
-
         BLContext ctx(img);
 
         ctx.clear_all();
@@ -212,8 +210,16 @@ int main() {
         BLImageData imgData;
         img.get_data(&imgData);
         
-        sfTexture.update(reinterpret_cast<const std::uint8_t*>(imgData.pixel_data), {width, height}, {0, 0});
-        
+        if (imgData.stride == width * 4) {
+            sfTexture.update(reinterpret_cast<const std::uint8_t*>(imgData.pixel_data), {width, height}, {0, 0});
+        } else {
+            const std::uint8_t* rowPtr = reinterpret_cast<const std::uint8_t*>(imgData.pixel_data);
+            for (unsigned int y = 0; y < height; ++y) {
+                sfTexture.update(rowPtr, {width, 1}, {0, y});
+                rowPtr += imgData.stride; 
+            }
+        }
+
         window.clear();
         window.draw(sfSprite);
         window.display();
