@@ -3,3 +3,8 @@ test-api
 test-graphics
 .clj-kondo/*
 .lsp/*
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+test-map.json
