@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(glfw3 REQUIRED) 
+
+set(ASMJIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/asmjit" CACHE PATH "")
+
+set(BLEND2D_STATIC ON CACHE INTERNAL "")
+
+add_subdirectory(external/blend2d)
 
 add_executable(test-api test-api.cpp)
 target_compile_options(test-api PRIVATE -Wall)
@@ -13,7 +20,12 @@ target_link_libraries(test-api PRIVATE CURL::libcurl nlohmann_json::nlohmann_jso
 
 add_executable(test-graphics test-graphics.cpp)
 target_compile_options(test-graphics PRIVATE -Wall)
-target_link_libraries(test-graphics PRIVATE nlohmann_json::nlohmann_json)
+
+target_link_libraries(test-graphics PRIVATE 
+    nlohmann_json::nlohmann_json
+    blend2d
+    glfw
+)
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/test-map.json
