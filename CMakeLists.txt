@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(glfw3 REQUIRED) 
+find_package(SFML 3.0 COMPONENTS Graphics Window REQUIRED)
 
 set(ASMJIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/asmjit" CACHE PATH "")
 
@@ -24,8 +24,9 @@ target_compile_options(test-graphics PRIVATE -Wall)
 target_link_libraries(test-graphics PRIVATE 
     nlohmann_json::nlohmann_json
     blend2d
-    glfw
-)
+    SFML::Graphics
+    SFML::Window
+    )
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/test-map.json

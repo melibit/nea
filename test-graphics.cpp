@@ -7,6 +7,8 @@
 #include <string>
 #include <utility>
 #include <blend2d/blend2d.h>
+#include <SFML/Graphics.hpp>
+#include <cstdint>
 
 using json = nlohmann::json;
 
@@ -51,19 +53,13 @@ public:
 
     const std::vector<Waterway>& getWaterways() const { return m_waterways; }
     
-    void renderToImage(const std::string& filename, int width, int height) const {
+    void render(BLContext& ctx, int width, int height) const {
         if (m_waterways.empty()) {
-            std::cerr << "Warning: Map is completely empty, skipping image output step." << std::endl;
+            std::cerr << "Warning: Map is empty." << std::endl;
             return;
         }
 
-        BLImage img(width, height, BL_FORMAT_PRGB32);
-
-        BLContext ctx(img);
-        ctx.clear_all();
-        ctx.fill_all(BLRgba32(0xFF1E1E24)); 
-
-        ctx.set_stroke_style(BLRgba32(0xFF4FA3E3)); 
+        ctx.set_stroke_style(BLRgba32(0xFFE3A34F)); 
         ctx.set_stroke_width(2.0);                 
         ctx.set_stroke_join(BL_STROKE_JOIN_ROUND);  
         ctx.set_stroke_caps(BL_STROKE_CAP_ROUND); 
@@ -99,19 +95,6 @@ public:
             }
 
             ctx.stroke_path(path);
-        }
-
-        ctx.end();
-
-        BLImageCodec codec;
-        codec.find_by_extension(".png");
-        BLResult result = img.write_to_file(filename.c_str(), codec);
-
-        if (result == BL_SUCCESS) {
-            std::cout << "Successfully rendered " << m_waterways.size() 
-                      << " elements to image: " << filename << std::endl;
-        } else {
-            std::cerr << "Failed to export PNG frame image format. Error code: " << result << std::endl;
         }
     }
 
@@ -171,19 +154,69 @@ int main() {
         return 1;
     }
 
+    Map myMap;
     try {
         json data = json::parse(file);
         
-        Map myMap = Map::fromJson(data);
+        myMap = Map::fromJson(data);
 
         std::cout << "Successfully parsed " << myMap.getWaterways().size() << " waterways:\n" << std::endl;
-        
-        myMap.renderToImage("test-out.png", 15360, 8640); 
-
+    
     } catch (const json::parse_error& e) {
         std::cerr << "JSON Parsing error: " << e.what() << std::endl;
         return 1;
     } 
+    
+    unsigned int width = 1280;
+    unsigned int height = 720;
 
+    sf::RenderWindow window(sf::VideoMode({width, height}), "test-graphics");
+    window.setFramerateLimit(60);
+
+    sf::Texture sfTexture;
+    if (!sfTexture.resize({width, height})) {
+        std::cerr << "Error: Failed to initialize texture." << std::endl;
+        return 1;
+    }
+    sf::Sprite sfSprite(sfTexture);
+
+    BLImage img(width, height, BL_FORMAT_PRGB32);   
+    
+    while (window.isOpen()) {
+        while (const std::optional<sf::Event> event = window.pollEvent()) {
+            if (event->is<sf::Event::Closed>()) {
+                window.close();
+            }
+            else if (const auto* resizeEvent = event->getIf<sf::Event::Resized>()) {
+                width = resizeEvent->size.x;
+                height = resizeEvent->size.y;
+                
+                window.setView(sf::View(sf::FloatRect({0.f, 0.f}, {static_cast<float>(width), static_cast<float>(height)})));
+                
+                img.create(width, height, BL_FORMAT_PRGB32);
+                (void)sfTexture.resize({width, height});
+                sfSprite.setTexture(sfTexture, true);
+            }
+        }
+        
+        std::cout << width << height << " " << img.width() << img.height() << std::endl;
+
+        BLContext ctx(img);
+
+        ctx.clear_all();
+        ctx.fill_all(BLRgba32(0xFF241E1E)); 
+
+        myMap.render(ctx, width, height);
+        ctx.end();
+
+        BLImageData imgData;
+        img.get_data(&imgData);
+        
+        sfTexture.update(reinterpret_cast<const std::uint8_t*>(imgData.pixel_data), {width, height}, {0, 0});
+        
+        window.clear();
+        window.draw(sfSprite);
+        window.display();
+    }
     return 0;
 }
