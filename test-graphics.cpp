@@ -37,14 +37,67 @@ public:
     const std::vector<Point>& getGeometry() const { return m_geometry; }
 };
 
+// EPSG:3544 
+class WebMercator {
+public:
+    static constexpr double EarthRadius = 6378137.0;
+    static constexpr double HalfCircumference = EarthRadius * M_PI;
+
+    static BLPoint project(double lat, double lon) {
+        double x = lon * (M_PI / 180.0) * EarthRadius;
+        
+        // Stop Inf at the poles! 
+        if (lat > 85.05112878) lat = 85.05112878;
+        if (lat < -85.05112878) lat = -85.05112878;
+        
+        double latRad = lat * (M_PI / 180.0);
+        double y = std::log(std::tan((M_PI / 4.0) + (latRad / 2.0))) * EarthRadius;
+        
+        return BLPoint(x, y);
+    }
+};
+
+class Camera {
+private:
+    BLPoint m_centre;
+    float m_zoom;
+public:
+    Camera() : m_centre(0.0, 0.0), m_zoom(1.0) {}
+
+    void CentreOn(BLPoint worldPos, float initialZoom) {
+        m_centre = worldPos;
+        m_zoom = initialZoom;
+    }
+
+    void pan(float dx, float dy) {
+        m_centre.x += dx / m_zoom;
+        m_centre.y -= dy / m_zoom; // in Graphics an increase in y in down, not up 
+    }
+
+    BLPoint screenToWorld(double screenX, double screenY, int width, int height) const {
+        double halfW = width / 2.0;
+        double halfH = height / 2.0;
+
+        double worldX = m_centre.x + (screenX - halfW) / m_zoom;
+        double worldY = m_centre.y - (screenY - halfH) / m_zoom;
+        return BLPoint(worldX, worldY);
+    }
+
+    BLMatrix2D getTransformationMatrix(int width, int height) const {
+        BLMatrix2D mat;
+        mat.reset();
+        
+        mat.translate(width / 2.0, height / 2.0);
+        mat.scale(m_zoom, -m_zoom);
+        mat.translate(-m_centre.x, -m_centre.y);
+        
+        return mat;
+    }
+};
+
 class Map {
 private:
     std::vector<Waterway> m_waterways;
-
-    float m_minLat = 51.25f;
-    float m_maxLat = 51.72f;
-    float m_minLon = -0.57f;
-    float m_maxLon = 0.37f;
 
 public:
     void addWaterway(Waterway waterway) {
@@ -53,49 +106,45 @@ public:
 
     const std::vector<Waterway>& getWaterways() const { return m_waterways; }
     
-    void render(BLContext& ctx, int width, int height) const {
+    BLPoint getGeographicCentre() const {
+        float midLat = (51.25f + 51.72f) / 2.0f;
+        float midLon = (-0.57f + 0.37f) / 2.0f;
+        return WebMercator::project(midLat, midLon);
+    }
+
+    void render(BLContext& ctx, int width, int height, const Camera& camera) const {
         if (m_waterways.empty()) {
             std::cerr << "Warning: Map is empty." << std::endl;
             return;
         }
 
+        ctx.save();
+
+        ctx.set_transform(camera.getTransformationMatrix(width, height));
+        double scaleFactor = camera.getTransformationMatrix(width, height).m00; 
+        double lineThickness = 2.0 / (scaleFactor > 0.0001 ? scaleFactor : 1.0); 
+
         ctx.set_stroke_style(BLRgba32(0xFFE3A34F)); 
-        ctx.set_stroke_width(2.0);                 
+        ctx.set_stroke_width(lineThickness);                 
         ctx.set_stroke_join(BL_STROKE_JOIN_ROUND);  
         ctx.set_stroke_caps(BL_STROKE_CAP_ROUND); 
-
-        float padding = 40.0f;
-        float usableWidth = width - (padding * 2.0f);
-        float usableHeight = height - (padding * 2.0f);
-
-        float lonRange = (m_maxLon - m_minLon) > 0.0f ? (m_maxLon - m_minLon) : 1.0f;
-        float latRange = (m_maxLat - m_minLat) > 0.0f ? (m_maxLat - m_minLat) : 1.0f;
-
-        auto project = [&](float lat, float lon) -> BLPoint {
-            float normX = (lon - m_minLon) / lonRange;
-            float normY = (m_maxLat - lat) / latRange;
-
-            return BLPoint(
-                padding + (normX * usableWidth),
-                padding + (normY * usableHeight)
-            );
-        };
 
         for (const auto& waterway : m_waterways) {
             const auto& geom = waterway.getGeometry();
             if (geom.empty()) continue;
 
             BLPath path;
-            BLPoint start = project(geom[0].getLat(), geom[0].getLon());
+            BLPoint start = WebMercator::project(geom[0].getLat(), geom[0].getLon());
             path.move_to(start.x, start.y);
 
             for (size_t i = 1; i < geom.size(); ++i) {
-                BLPoint next = project(geom[i].getLat(), geom[i].getLon());
+                BLPoint next = WebMercator::project(geom[i].getLat(), geom[i].getLon());
                 path.line_to(next.x, next.y);
             }
 
             ctx.stroke_path(path);
         }
+        ctx.restore();
     }
 
     static Map fromJson(const json& data) {
@@ -167,6 +216,11 @@ int main() {
         return 1;
     } 
     
+    
+    Camera myCamera;
+    myCamera.CentreOn(myMap.getGeographicCentre(), 0.05);
+
+
     unsigned int width = 1280;
     unsigned int height = 720;
 
@@ -204,7 +258,7 @@ int main() {
         ctx.clear_all();
         ctx.fill_all(BLRgba32(0xFF241E1E)); 
 
-        myMap.render(ctx, width, height);
+        myMap.render(ctx, width, height, myCamera);
         ctx.end();
 
         BLImageData imgData;
@@ -223,6 +277,8 @@ int main() {
         window.clear();
         window.draw(sfSprite);
         window.display();
+
+        myCamera.pan(1, 1);
     }
     return 0;
 }
