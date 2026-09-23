@@ -8,6 +8,7 @@
 #include <utility>
 #include <blend2d/blend2d.h>
 #include <SFML/Graphics.hpp>
+#include <SFML/Window/Mouse.hpp>
 #include <cstdint>
 
 using json = nlohmann::json;
@@ -72,6 +73,14 @@ public:
     void pan(float dx, float dy) {
         m_centre.x += dx / m_zoom;
         m_centre.y -= dy / m_zoom; // in Graphics an increase in y in down, not up 
+    }
+
+    void zoomIn() {
+        m_zoom *= 1.05;
+    }
+
+    void zoomOut() {
+        m_zoom *= 0.95;
     }
 
     BLPoint screenToWorld(double screenX, double screenY, int width, int height) const {
@@ -251,8 +260,13 @@ int main() {
                 (void)sfTexture.resize({width, height});
                 sfSprite.setTexture(sfTexture, true);
             }
+            else if(const auto* scrollEvent = event->getIf<sf::Event::MouseWheelScrolled>()) {
+                if (scrollEvent->delta < 0)
+                    myCamera.zoomOut();
+                if (scrollEvent->delta > 0)
+                    myCamera.zoomIn();
+            }
         }
-        
         BLContext ctx(img);
 
         ctx.clear_all();
@@ -278,7 +292,11 @@ int main() {
         window.draw(sfSprite);
         window.display();
 
-        myCamera.pan(1, 1);
+        sf::Vector2i position = sf::Mouse::getPosition();
+
+        float mouseX = ((float)position.x/width)-1;
+        float mouseY = ((float)position.y/height)-1;
+        myCamera.pan(std::pow(mouseX,3), std::pow(mouseY, 3));
     }
     return 0;
 }
