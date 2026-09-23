@@ -292,11 +292,12 @@ int main() {
         window.draw(sfSprite);
         window.display();
 
-        sf::Vector2i position = sf::Mouse::getPosition();
+        sf::Vector2i position = sf::Mouse::getPosition(window);
 
-        float mouseX = ((float)position.x/width)-1;
-        float mouseY = ((float)position.y/height)-1;
-        myCamera.pan(std::pow(mouseX,3), std::pow(mouseY, 3));
+        float mouseX = (((float)position.x/width)-0.5)*2;
+        float mouseY = (((float)position.y/height)-0.5)*2;
+
+        myCamera.pan(std::pow(mouseX*2,3), std::pow(mouseY*2, 3));
     }
     return 0;
 }
