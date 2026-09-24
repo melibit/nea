@@ -79,7 +79,7 @@ public:
     void zoomAt(float factor, float anchorX, float anchorY, int width, int height) {
         BLPoint worldAnchor = screenToWorld(anchorX, anchorY, width, height);
         
-        m_zoom = std::clamp<float>(m_zoom * factor, 0.01, 100.0);
+        m_zoom = std::clamp<float>(m_zoom * factor, 0.01, 50.0);
 
         BLPoint newWorldAnchor = screenToWorld(anchorX, anchorY, width, height);
         m_centre.x += (worldAnchor.x - newWorldAnchor.x);
@@ -105,7 +105,15 @@ public:
         
         return mat;
     }
+
+    double getPixelsPerMetre() const {
+        double currentLat = 51.49f; // could be dynamic to slightly increase accuracy?
+        double latCorrection = std::cos(currentLat * (M_PI / 180.0));
+    
+        return m_zoom / latCorrection;
+    }
 };
+
 
 class Map {
 private:
@@ -158,6 +166,70 @@ public:
         }
         ctx.restore();
     }
+
+    void renderScaleBar(BLContext& ctx, int width, int height, const Camera& camera) {
+        float targetWidth = width/8;
+        
+        float targetMetres = targetWidth / camera.getPixelsPerMetre();
+
+        float chosenMetres = 1000.0;
+        std::string label = "1 km";
+
+        if (targetMetres >= 50000.0)      { chosenMetres = 50000.0; label = "50 km"; }
+        else if (targetMetres >= 20000.0) { chosenMetres = 20000.0; label = "20 km"; }
+        else if (targetMetres >= 10000.0) { chosenMetres = 10000.0; label = "10 km"; }
+        else if (targetMetres >= 5000.0)  { chosenMetres = 5000.0;  label = "5 km";  }
+        else if (targetMetres >= 2000.0)  { chosenMetres = 2000.0;  label = "2 km";  }
+        else if (targetMetres >= 1000)    { chosenMetres = 1000.0;  label = "1 km";  }
+        else if (targetMetres >= 500.0)   { chosenMetres = 500.0; label = "500 m"; }
+        else if (targetMetres >= 200.0)   { chosenMetres = 200.0; label = "200 m"; }
+        else if (targetMetres >= 100.0)   { chosenMetres = 100.0; label = "100 m"; }
+        else if (targetMetres >= 50.0)    { chosenMetres = 50.0;  label = "50 m";  }
+        else                              { chosenMetres = 10.0;  label = "10 m";  }
+
+        float barWidth = chosenMetres * camera.getPixelsPerMetre();
+
+        float paddingX = 30.0;
+        float paddingY = 30.0;
+        float barHeight = 6.0;
+        
+        float startX = width - paddingX - barWidth;
+        float endX = width - paddingX;
+        float barY = height - paddingY;
+
+        ctx.save();
+        
+        ctx.set_fill_style(BLRgba32(0x88000000)); 
+        ctx.fill_rect(startX - 10, barY - 25, barWidth + 20, barHeight + 35);
+
+        ctx.set_stroke_style(BLRgba32(0xFFFFFFFF));
+        ctx.set_stroke_width(2.0);
+        
+        BLPath scalePath;
+        scalePath.move_to(startX, barY - barHeight);
+        scalePath.line_to(startX, barY);
+        scalePath.line_to(endX, barY);
+        scalePath.line_to(endX, barY - barHeight);
+        
+        ctx.stroke_path(scalePath);
+        
+        BLFontFace face;
+        if (face.create_from_file("fonts/HammersmithOne.ttf") != BL_SUCCESS) {
+            std::cerr << "Failed to Load Font";
+            return;
+        }
+
+        BLFont font;
+        font.create_from_face(face, 15.0f);
+
+        ctx.set_fill_style(BLRgba32(0xFFFFFFFF));
+        BLGlyphBuffer buf;
+        float textX = startX + (barWidth / 2.0) - 15.0; 
+        ctx.fill_utf8_text(BLPoint(textX, barY - 10), font, label.c_str());
+
+        ctx.restore();
+    }
+
 
     static Map fromJson(const json& data) {
         Map map;
@@ -288,6 +360,7 @@ int main() {
         ctx.fill_all(BLRgba32(0xFF241E1E)); 
 
         myMap.render(ctx, width, height, myCamera);
+        myMap.renderScaleBar(ctx, width, height, myCamera);
         ctx.end();
 
         BLImageData imgData;

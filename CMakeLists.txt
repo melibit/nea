@@ -40,4 +40,12 @@ add_custom_command(
 
 add_custom_target(map DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/test-map.json)
 
+set(FONT_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/fonts")
+
+add_custom_target(font
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${FONT_OUTPUT_DIR}"    
+    COMMENT "Fetching Font data from Google Fonts..."
+    COMMAND curl --silent --show-error "https://fonts.gstatic.com/s/hammersmithone/v18/qWcyB624q4L_C4jGQ9IK0O_dFlnbshsks4MRXw.ttf" -o "${FONT_OUTPUT_DIR}/HammersmithOne.ttf"
+)
+
 add_custom_target(default_target ALL DEPENDS test-api test-graphics)
