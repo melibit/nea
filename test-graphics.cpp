@@ -10,6 +10,7 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Window/Mouse.hpp>
 #include <cstdint>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -75,12 +76,14 @@ public:
         m_centre.y -= dy / m_zoom; // in Graphics an increase in y in down, not up 
     }
 
-    void zoomIn() {
-        m_zoom *= 1.05;
-    }
+    void zoomAt(float factor, float anchorX, float anchorY, int width, int height) {
+        BLPoint worldAnchor = screenToWorld(anchorX, anchorY, width, height);
+        
+        m_zoom = std::clamp<float>(m_zoom * factor, 0.01, 100.0);
 
-    void zoomOut() {
-        m_zoom *= 0.95;
+        BLPoint newWorldAnchor = screenToWorld(anchorX, anchorY, width, height);
+        m_centre.x += (worldAnchor.x - newWorldAnchor.x);
+        m_centre.y += (worldAnchor.y - newWorldAnchor.y);
     }
 
     BLPoint screenToWorld(double screenX, double screenY, int width, int height) const {
@@ -244,8 +247,14 @@ int main() {
     sf::Sprite sfSprite(sfTexture);
 
     BLImage img(width, height, BL_FORMAT_PRGB32);   
-    
+   
+    sf::Vector2i lastPos;
+    sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+    sf::Vector2i mouseDelta;
     while (window.isOpen()) {
+        lastPos = mousePos;
+        mousePos = sf::Mouse::getPosition(window);
+        mouseDelta = mousePos - lastPos;
         while (const std::optional<sf::Event> event = window.pollEvent()) {
             if (event->is<sf::Event::Closed>()) {
                 window.close();
@@ -262,11 +271,17 @@ int main() {
             }
             else if(const auto* scrollEvent = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 if (scrollEvent->delta < 0)
-                    myCamera.zoomOut();
+                    myCamera.zoomAt(1.05, mousePos.x, mousePos.y, width, height);
                 if (scrollEvent->delta > 0)
-                    myCamera.zoomIn();
+                    myCamera.zoomAt(0.95, mousePos.x, mousePos.y, width, height);
+
             }
         }
+
+        if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+            myCamera.pan(-mouseDelta.x, -mouseDelta.y);
+        }
+        
         BLContext ctx(img);
 
         ctx.clear_all();
@@ -291,13 +306,6 @@ int main() {
         window.clear();
         window.draw(sfSprite);
         window.display();
-
-        sf::Vector2i position = sf::Mouse::getPosition(window);
-
-        float mouseX = (((float)position.x/width)-0.5)*2;
-        float mouseY = (((float)position.y/height)-0.5)*2;
-
-        myCamera.pan(std::pow(mouseX*2,3), std::pow(mouseY*2, 3));
     }
     return 0;
 }
