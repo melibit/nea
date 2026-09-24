@@ -26,19 +26,6 @@ public:
     float getLon() const { return m_lon; }
 };
 
-class Waterway {
-private:
-    std::string m_name;
-    std::vector<Point> m_geometry;
-
-public:
-    Waterway(std::string name, std::vector<Point> geometry)
-        : m_name(std::move(name)), m_geometry(std::move(geometry)) {}
-
-    const std::string& getName() const { return m_name; }
-    const std::vector<Point>& getGeometry() const { return m_geometry; }
-};
-
 // EPSG:3544 
 class WebMercator {
 public:
@@ -66,7 +53,7 @@ private:
 public:
     Camera() : m_centre(0.0, 0.0), m_zoom(1.0) {}
 
-    void CentreOn(BLPoint worldPos, float initialZoom) {
+    void centreOn(BLPoint worldPos, float initialZoom) {
         m_centre = worldPos;
         m_zoom = initialZoom;
     }
@@ -106,71 +93,88 @@ public:
         return mat;
     }
 
-    double getPixelsPerMetre() const {
-        double currentLat = 51.49f; // could be dynamic to slightly increase accuracy?
-        double latCorrection = std::cos(currentLat * (M_PI / 180.0));
+    float getPixelsPerMetre() const {
+        float currentLat = 51.49f; // could be dynamic to slightly increase accuracy?
+        float latCorrection = std::cos(currentLat * (M_PI / 180.0));
     
         return m_zoom / latCorrection;
     }
 };
 
-
-class Map {
+class LineString {
 private:
-    std::vector<Waterway> m_waterways;
-
+    std::vector<Point> m_geometry;
+    BLRgba32 m_colour;
 public:
-    void addWaterway(Waterway waterway) {
-        m_waterways.push_back(std::move(waterway));
-    }
-
-    const std::vector<Waterway>& getWaterways() const { return m_waterways; }
-    
-    BLPoint getGeographicCentre() const {
-        float midLat = (51.25f + 51.72f) / 2.0f;
-        float midLon = (-0.57f + 0.37f) / 2.0f;
-        return WebMercator::project(midLat, midLon);
-    }
+    LineString(std::vector<Point> geometry, BLRgba32 colour) : m_geometry(std::move(geometry)), m_colour(colour) {}
+    const std::vector<Point>& getGeometry() const { return m_geometry; }
 
     void render(BLContext& ctx, int width, int height, const Camera& camera) const {
-        if (m_waterways.empty()) {
-            std::cerr << "Warning: Map is empty." << std::endl;
-            return;
-        }
-
+        if (m_geometry.empty()) return;
+        
         ctx.save();
 
         ctx.set_transform(camera.getTransformationMatrix(width, height));
         double scaleFactor = camera.getTransformationMatrix(width, height).m00; 
         double lineThickness = 2.0 / (scaleFactor > 0.0001 ? scaleFactor : 1.0); 
 
-        ctx.set_stroke_style(BLRgba32(0xFFE3A34F)); 
+        ctx.set_stroke_style(BLRgba32(m_colour)); 
         ctx.set_stroke_width(lineThickness);                 
         ctx.set_stroke_join(BL_STROKE_JOIN_ROUND);  
         ctx.set_stroke_caps(BL_STROKE_CAP_ROUND); 
 
-        for (const auto& waterway : m_waterways) {
-            const auto& geom = waterway.getGeometry();
-            if (geom.empty()) continue;
 
-            BLPath path;
-            BLPoint start = WebMercator::project(geom[0].getLat(), geom[0].getLon());
-            path.move_to(start.x, start.y);
+        BLPath path;
+        BLPoint start = WebMercator::project(m_geometry[0].getLat(), m_geometry[0].getLon());
+        path.move_to(start.x, start.y);
 
-            for (size_t i = 1; i < geom.size(); ++i) {
-                BLPoint next = WebMercator::project(geom[i].getLat(), geom[i].getLon());
-                path.line_to(next.x, next.y);
-            }
-
-            ctx.stroke_path(path);
+        for (size_t i = 1; i < m_geometry.size(); ++i) {
+            BLPoint next = WebMercator::project(m_geometry[i].getLat(), m_geometry[i].getLon());
+            path.line_to(next.x, next.y);
         }
-        ctx.restore();
-    }
 
-    void renderScaleBar(BLContext& ctx, int width, int height, const Camera& camera) {
-        float targetWidth = width/8;
-        
-        float targetMetres = targetWidth / camera.getPixelsPerMetre();
+        ctx.stroke_path(path);
+        ctx.restore();
+
+    } 
+};
+
+class Waterway : public LineString {
+private:
+    std::string m_name;
+public:
+    Waterway(std::string name, std::vector<Point> geometry)
+        :  LineString(std::move(geometry), BLRgba32(0xFFE3A34F)), m_name(name) {}
+
+    const std::string& getName() const { return m_name; }
+};
+
+class Highway : public LineString {
+private:
+    std::string m_name;
+public:
+    Highway(std::string name, std::vector<Point> geometry)
+        :  LineString(std::move(geometry), BLRgba32(0xFFA3A3A3)), m_name(name) {}
+
+    const std::string& getName() const { return m_name; }
+};
+
+
+class ScaleBar {
+private:
+    float m_target_width;
+    BLFont m_font; 
+public:
+    ScaleBar(float targetWidth, std::string fontPath) : m_target_width(targetWidth) {
+        BLFontFace face;
+        if (face.create_from_file(fontPath.c_str()) != BL_SUCCESS) {
+            std::cerr << "Failed to Load Font From" << fontPath;
+            return;
+        }
+        m_font.create_from_face(face, 15.0f);
+    }
+    void render(BLContext& ctx, int width, int height, const Camera& camera) const {
+        float targetMetres = (width*m_target_width) / camera.getPixelsPerMetre();
 
         float chosenMetres = 1000.0;
         std::string label = "1 km";
@@ -213,23 +217,41 @@ public:
         
         ctx.stroke_path(scalePath);
         
-        BLFontFace face;
-        if (face.create_from_file("fonts/HammersmithOne.ttf") != BL_SUCCESS) {
-            std::cerr << "Failed to Load Font";
-            return;
-        }
-
-        BLFont font;
-        font.create_from_face(face, 15.0f);
-
         ctx.set_fill_style(BLRgba32(0xFFFFFFFF));
         BLGlyphBuffer buf;
         float textX = startX + (barWidth / 2.0) - 15.0; 
-        ctx.fill_utf8_text(BLPoint(textX, barY - 10), font, label.c_str());
+        ctx.fill_utf8_text(BLPoint(textX, barY - 10), m_font, label.c_str());
 
         ctx.restore();
     }
+};
 
+class Map {
+private:
+    std::vector<LineString> m_elements;
+
+public:
+    void addElement(LineString element) {
+        m_elements.push_back(std::move(element));
+    }
+
+    const std::vector<LineString>& getElements() const { return m_elements; }
+    
+    BLPoint getGeographicCentre() const {
+        float midLat = (51.25f + 51.72f) / 2.0f;
+        float midLon = (-0.57f + 0.37f) / 2.0f;
+        return WebMercator::project(midLat, midLon);
+    }
+
+    void render(BLContext& ctx, int width, int height, const Camera& camera) const {
+        if (m_elements.empty()) {
+            std::cerr << "Warning: Map is empty." << std::endl;
+            return;
+        }
+        for (const auto& element : m_elements) {
+            element.render(ctx, width, height, camera);
+        }
+    }
 
     static Map fromJson(const json& data) {
         Map map;
@@ -239,43 +261,50 @@ public:
         }
 
         for (const auto& element : data["elements"]) {
-            if (element.contains("tags") && element["tags"].contains("waterway")) {
+            if (!element.contains("tags"))
+                continue;
                 
-                std::string baseName = "Unnamed Waterway";
-                if (element["tags"].contains("name")) {
-                    baseName = element["tags"]["name"].get<std::string>();
-                }
+            std::string baseName = "Unnamed";
+            if (element["tags"].contains("name")) {
+                baseName = element["tags"]["name"].get<std::string>();
+            }
 
-                if (element.contains("geometry") && element["geometry"].is_array()) {
-                    std::vector<Point> geometry;
-                    for (const auto& pt : element["geometry"]) {
-                        if (pt.contains("lat") && pt.contains("lon")) {
-                            geometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
+            if (element.contains("geometry") && element["geometry"].is_array()) {
+                std::vector<Point> geometry;
+                for (const auto& pt : element["geometry"]) {
+                    if (pt.contains("lat") && pt.contains("lon")) {
+                        geometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
+                    }
+                }
+                if (!geometry.empty()) {
+                    if (element["tags"].contains("waterway"))
+                        map.addElement(Waterway(baseName, std::move(geometry)));
+                    if (element["tags"].contains("highway"))
+                        map.addElement(Highway(baseName, std::move(geometry)));
+                }
+            } 
+            else if (element.contains("members") && element["members"].is_array()) {
+                for (const auto& member : element["members"]) {
+                    if (member.value("type", "") == "way" && member.contains("geometry") && member["geometry"].is_array()) {
+                        std::vector<Point> memberGeometry;
+                        
+                        for (const auto& pt : member["geometry"]) {
+                            if (pt.contains("lat") && pt.contains("lon")) {
+                                memberGeometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
+                            }
                         }
-                    }
-                    if (!geometry.empty()) {
-                        map.addWaterway(Waterway(baseName, std::move(geometry)));
-                    }
-                } 
-                else if (element.contains("members") && element["members"].is_array()) {
-                    for (const auto& member : element["members"]) {
-                        if (member.value("type", "") == "way" && member.contains("geometry") && member["geometry"].is_array()) {
-                            std::vector<Point> memberGeometry;
-                            
-                            for (const auto& pt : member["geometry"]) {
-                                if (pt.contains("lat") && pt.contains("lon")) {
-                                    memberGeometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
-                                }
-                            }
-                            
-                            if (!memberGeometry.empty()) {
-                                map.addWaterway(Waterway(baseName, std::move(memberGeometry)));
-                            }
+                        
+                        if (!memberGeometry.empty()) {
+                            if (element["tags"].contains("waterway"))
+                                map.addElement(Waterway(baseName, std::move(memberGeometry)));
+                            if (element["tags"].contains("highway"))
+                                map.addElement(Highway(baseName, std::move(memberGeometry)));
                         }
                     }
                 }
             }
         }
+
         return map;
     }
 };
@@ -293,8 +322,13 @@ int main() {
         
         myMap = Map::fromJson(data);
 
-        std::cout << "Successfully parsed " << myMap.getWaterways().size() << " waterways:\n" << std::endl;
-    
+        std::cout << "Successfully parsed " << myMap.getElements().size() << " elements:" << std::endl;
+        
+        unsigned int points = 0;
+        for (const auto &element : myMap.getElements()) {
+            points += element.getGeometry().size();
+        }
+        std::cout << points << " points" << std::endl;
     } catch (const json::parse_error& e) {
         std::cerr << "JSON Parsing error: " << e.what() << std::endl;
         return 1;
@@ -302,8 +336,9 @@ int main() {
     
     
     Camera myCamera;
-    myCamera.CentreOn(myMap.getGeographicCentre(), 0.05);
+    myCamera.centreOn(myMap.getGeographicCentre(), 0.05);
 
+    ScaleBar myScaleBar(0.125f, "fonts/HammersmithOne.ttf");
 
     unsigned int width = 1280;
     unsigned int height = 720;
@@ -360,7 +395,7 @@ int main() {
         ctx.fill_all(BLRgba32(0xFF241E1E)); 
 
         myMap.render(ctx, width, height, myCamera);
-        myMap.renderScaleBar(ctx, width, height, myCamera);
+        myScaleBar.render(ctx, width, height, myCamera);
         ctx.end();
 
         BLImageData imgData;
