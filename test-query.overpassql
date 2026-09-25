@@ -11,6 +11,7 @@ area["name"="Greater London"]["admin_level"="5"]->.searchArea;
   relation["waterway"="stream"](area.searchArea);
   
   way["highway"~"primary|trunk"](area.searchArea);
+  relation["highway"~"primary|trunk"](area.searchArea);
   //way["leisure"="park"](area.searchArea);
   //relation["leisure"="park"](area.searchArea);
 );
