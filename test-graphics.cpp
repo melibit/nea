@@ -219,7 +219,12 @@ public:
         
         ctx.set_fill_style(BLRgba32(0xFFFFFFFF));
         BLGlyphBuffer buf;
-        float textX = startX + (barWidth / 2.0) - 15.0; 
+        buf.set_utf8_text(label.c_str());
+        
+        BLTextMetrics tm;
+        m_font.get_text_metrics(buf, tm);
+
+        float textX = startX + (barWidth / 2.0) - (tm.bounding_box.x0 + (tm.bounding_box.x1 - tm.bounding_box.x0) / 2.0); 
         ctx.fill_utf8_text(BLPoint(textX, barY - 10), m_font, label.c_str());
 
         ctx.restore();
