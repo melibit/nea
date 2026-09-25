@@ -101,7 +101,12 @@ public:
     }
 };
 
-class LineString {
+class Element {
+public:
+    virtual void render(BLContext& ctx, int width, int height, const Camera& camera) const = 0; 
+};
+
+class LineString : public Element {
 private:
     std::vector<Point> m_geometry;
     BLRgba32 m_colour;
@@ -109,7 +114,7 @@ public:
     LineString(std::vector<Point> geometry, BLRgba32 colour) : m_geometry(std::move(geometry)), m_colour(colour) {}
     const std::vector<Point>& getGeometry() const { return m_geometry; }
 
-    void render(BLContext& ctx, int width, int height, const Camera& camera) const {
+    void render(BLContext& ctx, int width, int height, const Camera& camera) const override {
         if (m_geometry.empty()) return;
         
         ctx.save();
@@ -139,6 +144,15 @@ public:
     } 
 };
 
+class Polygon : public Element {
+private:
+    std::vector<Point> m_geometry;
+    BLRgba32 m_colour;
+public:
+    Polygon(std::vector<Point> geometry, BLRgba32 colour) : m_geometry(std::move(geometry)), m_colour(colour) {}
+    const std::vector<Point>& getGeometry() const { return m_geometry; }
+};
+
 class Waterway : public LineString {
 private:
     std::string m_name;
@@ -160,7 +174,7 @@ public:
 };
 
 
-class ScaleBar {
+class ScaleBar : public Element {
 private:
     float m_target_width;
     BLFont m_font; 
@@ -233,14 +247,14 @@ public:
 
 class Map {
 private:
-    std::vector<LineString> m_elements;
+    std::vector<Element*> m_elements;
 
 public:
-    void addElement(LineString element) {
+    void addElement(Element* element) {
         m_elements.push_back(std::move(element));
     }
 
-    const std::vector<LineString>& getElements() const { return m_elements; }
+    const std::vector<Element*>& getElements() const { return m_elements; }
     
     BLPoint getGeographicCentre() const {
         float midLat = (51.25f + 51.72f) / 2.0f;
@@ -254,7 +268,7 @@ public:
             return;
         }
         for (const auto& element : m_elements) {
-            element.render(ctx, width, height, camera);
+            element->render(ctx, width, height, camera);
         }
     }
 
@@ -283,9 +297,9 @@ public:
                 }
                 if (!geometry.empty()) {
                     if (element["tags"].contains("waterway"))
-                        map.addElement(Waterway(baseName, std::move(geometry)));
+                        map.addElement(new Waterway(baseName, std::move(geometry)));
                     if (element["tags"].contains("highway"))
-                        map.addElement(Highway(baseName, std::move(geometry)));
+                        map.addElement(new Highway(baseName, std::move(geometry)));
                 }
             } 
             else if (element.contains("members") && element["members"].is_array()) {
@@ -301,9 +315,9 @@ public:
                         
                         if (!memberGeometry.empty()) {
                             if (element["tags"].contains("waterway"))
-                                map.addElement(Waterway(baseName, std::move(memberGeometry)));
+                                map.addElement(new Waterway(baseName, std::move(memberGeometry)));
                             if (element["tags"].contains("highway"))
-                                map.addElement(Highway(baseName, std::move(memberGeometry)));
+                                map.addElement(new Highway(baseName, std::move(memberGeometry)));
                         }
                     }
                 }
@@ -329,12 +343,7 @@ int main() {
 
         std::cout << "Successfully parsed " << myMap.getElements().size() << " elements:" << std::endl;
         
-        unsigned int points = 0;
-        for (const auto &element : myMap.getElements()) {
-            points += element.getGeometry().size();
-        }
-        std::cout << points << " points" << std::endl;
-    } catch (const json::parse_error& e) {
+   } catch (const json::parse_error& e) {
         std::cerr << "JSON Parsing error: " << e.what() << std::endl;
         return 1;
     } 
