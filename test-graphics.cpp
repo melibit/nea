@@ -120,8 +120,8 @@ public:
         ctx.save();
 
         ctx.set_transform(camera.getTransformationMatrix(width, height));
-        double scaleFactor = camera.getTransformationMatrix(width, height).m00; 
-        double lineThickness = 2.0 / (scaleFactor > 0.0001 ? scaleFactor : 1.0); 
+        float scaleFactor = camera.getTransformationMatrix(width, height).m00; 
+        float lineThickness = 2.0 / (scaleFactor > 0.0001 ? scaleFactor : 1.0); 
 
         ctx.set_stroke_style(m_colour); 
         ctx.set_stroke_width(lineThickness);                 
@@ -153,6 +153,30 @@ private:
 public:
     Polygon(std::vector<Point> geometry, BLRgba32 colour) : m_geometry(std::move(geometry)), m_colour(colour) {}
     const std::vector<Point>& getGeometry() const { return m_geometry; }
+
+    void render(BLContext& ctx, int width, int height, const Camera& camera) const override {
+        if (m_geometry.empty()) return;
+
+        ctx.save();
+
+        ctx.set_transform(camera.getTransformationMatrix(width, height));
+        
+        ctx.set_fill_style(m_colour);
+        
+        BLPath path;
+        BLPoint start = WebMercator::project(m_geometry[0].getLat(), m_geometry[0].getLon());
+        path.move_to(start.x, start.y);
+
+        for (size_t i = 1; i < m_geometry.size(); ++i) {
+            BLPoint next = WebMercator::project(m_geometry[i].getLat(), m_geometry[i].getLon());
+            path.line_to(next.x, next.y);
+           // ctx.set_fill_style(BLRgba32(0xFF0000FF)); 
+           // ctx.fill_circle(next.x, next.y, lineThickness);
+        }
+
+        ctx.fill_path(path);
+        ctx.restore();
+    }
 };
 
 class Waterway : public LineString {
@@ -175,6 +199,15 @@ public:
     const std::string& getName() const { return m_name; }
 };
 
+class Park : public Polygon {
+private:
+    std::string m_name;
+public:
+    Park(std::string name, std::vector<Point> geometry)
+        : Polygon(std::move(geometry), BLRgba32(0xFF96E080)), m_name(name) {}
+    
+    const std::string& getName() const { return m_name; }
+};
 
 class ScaleBar : public Element {
 private:
@@ -302,6 +335,8 @@ public:
                         map.addElement(new Waterway(baseName, std::move(geometry)));
                     if (element["tags"].contains("highway"))
                         map.addElement(new Highway(baseName, std::move(geometry)));
+                    if (element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
+                        map.addElement(new Park(baseName, std::move(geometry)));
                 }
             } 
             else if (element.contains("members") && element["members"].is_array()) {
@@ -322,6 +357,8 @@ public:
                                 map.addElement(new Waterway(baseName, std::move(memberGeometry)));
                             if (element["tags"].contains("highway"))
                                 map.addElement(new Highway(baseName, std::move(memberGeometry)));
+                            if (element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
+                                map.addElement(new Park(baseName, std::move(memberGeometry)));
                         }
                     }
                 }
