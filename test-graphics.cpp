@@ -123,7 +123,7 @@ public:
         double scaleFactor = camera.getTransformationMatrix(width, height).m00; 
         double lineThickness = 2.0 / (scaleFactor > 0.0001 ? scaleFactor : 1.0); 
 
-        ctx.set_stroke_style(BLRgba32(m_colour)); 
+        ctx.set_stroke_style(m_colour); 
         ctx.set_stroke_width(lineThickness);                 
         ctx.set_stroke_join(BL_STROKE_JOIN_ROUND);  
         ctx.set_stroke_caps(BL_STROKE_CAP_ROUND); 
@@ -136,6 +136,8 @@ public:
         for (size_t i = 1; i < m_geometry.size(); ++i) {
             BLPoint next = WebMercator::project(m_geometry[i].getLat(), m_geometry[i].getLon());
             path.line_to(next.x, next.y);
+           // ctx.set_fill_style(BLRgba32(0xFF0000FF)); 
+           // ctx.fill_circle(next.x, next.y, lineThickness);
         }
 
         ctx.stroke_path(path);
@@ -372,7 +374,10 @@ int main() {
     sf::Vector2i lastPos;
     sf::Vector2i mousePos = sf::Mouse::getPosition(window);
     sf::Vector2i mouseDelta;
+
+    sf::Clock clock;
     while (window.isOpen()) {
+        clock.start();
         lastPos = mousePos;
         mousePos = sf::Mouse::getPosition(window);
         mouseDelta = mousePos - lastPos;
@@ -428,6 +433,11 @@ int main() {
         window.clear();
         window.draw(sfSprite);
         window.display();
+
+        sf::Time time = clock.getElapsedTime();
+        clock.reset();
+
+        window.setTitle("test-graphics | " + std::to_string(time.asMilliseconds()) + "ms");
     }
     return 0;
 }
