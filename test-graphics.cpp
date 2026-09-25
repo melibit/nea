@@ -274,7 +274,7 @@ public:
         }
     }
 
-    static Map fromJson(const json& data) {
+    static Map fromJSON(const json& data) {
         Map map;
 
         if (!data.contains("elements") || !data["elements"].is_array()) {
@@ -293,9 +293,9 @@ public:
             if (element.contains("geometry") && element["geometry"].is_array()) {
                 std::vector<Point> geometry;
                 for (const auto& pt : element["geometry"]) {
-                    if (pt.contains("lat") && pt.contains("lon")) {
-                        geometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
-                    }
+                    if (!pt.contains("lat") || !pt.contains("lon"))
+                        continue;
+                    geometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
                 }
                 if (!geometry.empty()) {
                     if (element["tags"].contains("waterway"))
@@ -306,13 +306,15 @@ public:
             } 
             else if (element.contains("members") && element["members"].is_array()) {
                 for (const auto& member : element["members"]) {
-                    if (member.value("type", "") == "way" && member.contains("geometry") && member["geometry"].is_array()) {
+                    if (member.value("type", "") != "way")
+                        continue;
+                    if (member.contains("geometry") && member["geometry"].is_array()) {
                         std::vector<Point> memberGeometry;
                         
                         for (const auto& pt : member["geometry"]) {
-                            if (pt.contains("lat") && pt.contains("lon")) {
-                                memberGeometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
-                            }
+                            if (!pt.contains("lat") || !pt.contains("lon")) 
+                                continue;
+                            memberGeometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
                         }
                         
                         if (!memberGeometry.empty()) {
@@ -341,7 +343,7 @@ int main() {
     try {
         json data = json::parse(file);
         
-        myMap = Map::fromJson(data);
+        myMap = Map::fromJSON(data);
 
         std::cout << "Successfully parsed " << myMap.getElements().size() << " elements:" << std::endl;
         
