@@ -29,18 +29,18 @@ public:
 // EPSG:3544 
 class WebMercator {
 public:
-    static constexpr double EarthRadius = 6378137.0;
-    static constexpr double HalfCircumference = EarthRadius * M_PI;
+    static constexpr float EarthRadius = 6378137.0;
+    static constexpr float HalfCircumference = EarthRadius * M_PI;
 
-    static BLPoint project(double lat, double lon) {
-        double x = lon * (M_PI / 180.0) * EarthRadius;
+    static BLPoint project(float lat, float lon) {
+        float x = lon * (M_PI / 180.0) * EarthRadius;
         
         // Stop Inf at the poles! 
         if (lat > 85.05112878) lat = 85.05112878;
         if (lat < -85.05112878) lat = -85.05112878;
         
-        double latRad = lat * (M_PI / 180.0);
-        double y = std::log(std::tan((M_PI / 4.0) + (latRad / 2.0))) * EarthRadius;
+        float latRad = lat * (M_PI / 180.0);
+        float y = std::log(std::tan((M_PI / 4.0) + (latRad / 2.0))) * EarthRadius;
         
         return BLPoint(x, y);
     }
@@ -73,12 +73,12 @@ public:
         m_centre.y += (worldAnchor.y - newWorldAnchor.y);
     }
 
-    BLPoint screenToWorld(double screenX, double screenY, int width, int height) const {
-        double halfW = width / 2.0;
-        double halfH = height / 2.0;
+    BLPoint screenToWorld(float screenX, float screenY, int width, int height) const {
+        float halfW = width / 2.0;
+        float halfH = height / 2.0;
 
-        double worldX = m_centre.x + (screenX - halfW) / m_zoom;
-        double worldY = m_centre.y - (screenY - halfH) / m_zoom;
+        float worldX = m_centre.x + (screenX - halfW) / m_zoom;
+        float worldY = m_centre.y - (screenY - halfH) / m_zoom;
         return BLPoint(worldX, worldY);
     }
 
@@ -146,13 +146,18 @@ public:
     } 
 };
 
+struct Ring {
+    std::vector<Point> m_geometry;
+    bool m_is_outer;
+};
+
 class Polygon : public Element {
 private:
-    std::vector<Point> m_geometry;
+    std::vector<Ring> m_geometry;
     BLRgba32 m_colour;
 public:
-    Polygon(std::vector<Point> geometry, BLRgba32 colour) : m_geometry(std::move(geometry)), m_colour(colour) {}
-    const std::vector<Point>& getGeometry() const { return m_geometry; }
+    Polygon(std::vector<Ring> geometry, BLRgba32 colour) : m_geometry(std::move(geometry)), m_colour(colour) {}
+    const std::vector<Ring>& getGeometry() const { return m_geometry; }
 
     void render(BLContext& ctx, int width, int height, const Camera& camera) const override {
         if (m_geometry.empty()) return;
@@ -164,16 +169,19 @@ public:
         ctx.set_fill_style(m_colour);
         
         BLPath path;
-        BLPoint start = WebMercator::project(m_geometry[0].getLat(), m_geometry[0].getLon());
-        path.move_to(start.x, start.y);
+        for (const auto& ring : m_geometry) {
+            if (ring.m_geometry.empty()) continue;
+            BLPoint start = WebMercator::project(ring.m_geometry[0].getLat(), ring.m_geometry[0].getLon());
+            path.move_to(start.x, start.y);
 
-        for (size_t i = 1; i < m_geometry.size(); ++i) {
-            BLPoint next = WebMercator::project(m_geometry[i].getLat(), m_geometry[i].getLon());
-            path.line_to(next.x, next.y);
-           // ctx.set_fill_style(BLRgba32(0xFF0000FF)); 
-           // ctx.fill_circle(next.x, next.y, lineThickness);
+            for (size_t i = 1; i < ring.m_geometry.size(); ++i) {
+                BLPoint next = WebMercator::project(ring.m_geometry[i].getLat(), ring.m_geometry[i].getLon());
+                path.line_to(next.x, next.y);
+            // ctx.set_fill_style(BLRgba32(0xFF0000FF)); 
+            // ctx.fill_circle(next.x, next.y, lineThickness);
+            }
+            path.close();
         }
-
         ctx.fill_path(path);
         ctx.restore();
     }
@@ -203,7 +211,7 @@ class Park : public Polygon {
 private:
     std::string m_name;
 public:
-    Park(std::string name, std::vector<Point> geometry)
+    Park(std::string name, std::vector<Ring> geometry)
         : Polygon(std::move(geometry), BLRgba32(0xFF96E080)), m_name(name) {}
     
     const std::string& getName() const { return m_name; }
@@ -223,24 +231,24 @@ public:
         m_font.create_from_face(face, 15.0f);
     }
     void render(BLContext& ctx, int width, int height, const Camera& camera) const {
-        float targetMetres = (width*m_target_width) / camera.getPixelsPerMetre();
+        float targetScale = (width*m_target_width) / camera.getPixelsPerMetre();
 
-        float chosenMetres = 1000.0;
+        float chosenScale = 1000.0;
         std::string label = "1 km";
 
-        if (targetMetres >= 50000.0)      { chosenMetres = 50000.0; label = "50 km"; }
-        else if (targetMetres >= 20000.0) { chosenMetres = 20000.0; label = "20 km"; }
-        else if (targetMetres >= 10000.0) { chosenMetres = 10000.0; label = "10 km"; }
-        else if (targetMetres >= 5000.0)  { chosenMetres = 5000.0;  label = "5 km";  }
-        else if (targetMetres >= 2000.0)  { chosenMetres = 2000.0;  label = "2 km";  }
-        else if (targetMetres >= 1000)    { chosenMetres = 1000.0;  label = "1 km";  }
-        else if (targetMetres >= 500.0)   { chosenMetres = 500.0; label = "500 m"; }
-        else if (targetMetres >= 200.0)   { chosenMetres = 200.0; label = "200 m"; }
-        else if (targetMetres >= 100.0)   { chosenMetres = 100.0; label = "100 m"; }
-        else if (targetMetres >= 50.0)    { chosenMetres = 50.0;  label = "50 m";  }
-        else                              { chosenMetres = 10.0;  label = "10 m";  }
+        if (targetScale >= 50000.0)      { chosenScale = 50000.0; label = "50 km"; }
+        else if (targetScale >= 20000.0) { chosenScale = 20000.0; label = "20 km"; }
+        else if (targetScale >= 10000.0) { chosenScale = 10000.0; label = "10 km"; }
+        else if (targetScale >= 5000.0)  { chosenScale = 5000.0;  label = "5 km";  }
+        else if (targetScale >= 2000.0)  { chosenScale = 2000.0;  label = "2 km";  }
+        else if (targetScale >= 1000)    { chosenScale = 1000.0;  label = "1 km";  }
+        else if (targetScale >= 500.0)   { chosenScale = 500.0; label = "500 m"; }
+        else if (targetScale >= 200.0)   { chosenScale = 200.0; label = "200 m"; }
+        else if (targetScale >= 100.0)   { chosenScale = 100.0; label = "100 m"; }
+        else if (targetScale >= 50.0)    { chosenScale = 50.0;  label = "50 m";  }
+        else                             { chosenScale = 10.0;  label = "10 m";  }
 
-        float barWidth = chosenMetres * camera.getPixelsPerMetre();
+        float barWidth = chosenScale * camera.getPixelsPerMetre();
 
         float paddingX = 30.0;
         float paddingY = 30.0;
@@ -333,35 +341,41 @@ public:
                 if (!geometry.empty()) {
                     if (element["tags"].contains("waterway"))
                         map.addElement(new Waterway(baseName, std::move(geometry)));
-                    if (element["tags"].contains("highway"))
+                    else if (element["tags"].contains("highway"))
                         map.addElement(new Highway(baseName, std::move(geometry)));
-                    if (element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
-                        map.addElement(new Park(baseName, std::move(geometry)));
+                    else if (element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
+                        map.addElement(new Park(baseName, std::vector<Ring>{ Ring{ std::move(geometry), true } }));
                 }
             } 
             else if (element.contains("members") && element["members"].is_array()) {
+                std::vector<Ring> geometry;
+
                 for (const auto& member : element["members"]) {
                     if (member.value("type", "") != "way")
                         continue;
-                    if (member.contains("geometry") && member["geometry"].is_array()) {
-                        std::vector<Point> memberGeometry;
-                        
-                        for (const auto& pt : member["geometry"]) {
-                            if (!pt.contains("lat") || !pt.contains("lon")) 
-                                continue;
-                            memberGeometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
-                        }
-                        
-                        if (!memberGeometry.empty()) {
-                            if (element["tags"].contains("waterway"))
-                                map.addElement(new Waterway(baseName, std::move(memberGeometry)));
-                            if (element["tags"].contains("highway"))
-                                map.addElement(new Highway(baseName, std::move(memberGeometry)));
-                            if (element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
-                                map.addElement(new Park(baseName, std::move(memberGeometry)));
-                        }
+                    if (!member.contains("geometry") || !member["geometry"].is_array())
+                        continue;
+
+                    std::vector<Point> memberGeometry;
+                    for (const auto& pt : member["geometry"]) {
+                        if (!pt.contains("lat") || !pt.contains("lon"))
+                            continue;
+                        memberGeometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
+                    }
+                    if (memberGeometry.empty())
+                        continue;
+                    if (element["tags"].contains("waterway"))
+                        map.addElement(new Waterway(baseName, std::move(memberGeometry)));
+                    else if (element["tags"].contains("highway"))
+                        map.addElement(new Highway(baseName, std::move(memberGeometry)));
+                    else {
+                        bool isOuter = member.value("role", "outer") == "outer";
+                        geometry.push_back(Ring{std::move(memberGeometry), isOuter});
                     }
                 }
+
+                if (!geometry.empty() && element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
+                    map.addElement(new Park(baseName, std::move(geometry)));
             }
         }
 
