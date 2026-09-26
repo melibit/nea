@@ -110,8 +110,10 @@ class LineString : public Element {
 private:
     std::vector<Point> m_geometry;
     BLRgba32 m_colour;
+protected:
+    float m_width;
 public:
-    LineString(std::vector<Point> geometry, BLRgba32 colour) : m_geometry(std::move(geometry)), m_colour(colour) {}
+    LineString(std::vector<Point> geometry, BLRgba32 colour, float width = 0) : m_geometry(std::move(geometry)), m_colour(colour), m_width(width) {}
     const std::vector<Point>& getGeometry() const { return m_geometry; }
 
     void render(BLContext& ctx, int width, int height, const Camera& camera) const override {
@@ -120,14 +122,14 @@ public:
         ctx.save();
 
         ctx.set_transform(camera.getTransformationMatrix(width, height));
-        float scaleFactor = camera.getTransformationMatrix(width, height).m00; 
-        float lineThickness = 2.0 / (scaleFactor > 0.0001 ? scaleFactor : 1.0); 
+        float lineThickness = m_width;
+        if (m_width == 0) { // 0 width => dynamic
+           lineThickness = 2.0 / (camera.getTransformationMatrix(width, height).m00); 
+        }
 
         ctx.set_stroke_style(m_colour); 
         ctx.set_stroke_width(lineThickness);                 
         ctx.set_stroke_join(BL_STROKE_JOIN_ROUND);  
-        ctx.set_stroke_caps(BL_STROKE_CAP_ROUND); 
-
 
         BLPath path;
         BLPoint start = WebMercator::project(m_geometry[0].getLat(), m_geometry[0].getLon());
@@ -191,8 +193,16 @@ class Waterway : public LineString {
 private:
     std::string m_name;
 public:
-    Waterway(std::string name, std::vector<Point> geometry)
-        :  LineString(std::move(geometry), BLRgba32(0xFFE3A34F)), m_name(name) {}
+    Waterway(std::string name, std::vector<Point> geometry, std::string type)
+        :  LineString(std::move(geometry), BLRgba32(0xFFE3A34F)), m_name(name) {
+            m_width = 4;
+            if (type == "stream")
+                m_width = 6;
+            if (type == "river")
+                m_width = 20;
+            if (type == "canal")
+                m_width = 8;
+        }
 
     const std::string& getName() const { return m_name; }
 };
@@ -201,8 +211,8 @@ class Highway : public LineString {
 private:
     std::string m_name;
 public:
-    Highway(std::string name, std::vector<Point> geometry)
-        :  LineString(std::move(geometry), BLRgba32(0xFFA3A3A3)), m_name(name) {}
+    Highway(std::string name, std::vector<Point> geometry, unsigned int lanes = 1)
+        :  LineString(std::move(geometry), BLRgba32(0xFFA3A3A3), 4*lanes), m_name(name) {}
 
     const std::string& getName() const { return m_name; }
 };
@@ -339,10 +349,12 @@ public:
                     geometry.emplace_back(pt["lat"].get<float>(), pt["lon"].get<float>());
                 }
                 if (!geometry.empty()) {
-                    if (element["tags"].contains("waterway"))
-                        map.addElement(new Waterway(baseName, std::move(geometry)));
+                    if (element["tags"].contains("waterway")) {
+
+                        map.addElement(new Waterway(baseName, std::move(geometry), element["tags"]["waterway"]));
+                    }
                     else if (element["tags"].contains("highway"))
-                        map.addElement(new Highway(baseName, std::move(geometry)));
+                        map.addElement(new Highway(baseName, std::move(geometry), std::stoi(element["tags"].value("lanes", "1"))));
                     else if (element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
                         map.addElement(new Park(baseName, std::vector<Ring>{ Ring{ std::move(geometry), true } }));
                 }
@@ -365,9 +377,9 @@ public:
                     if (memberGeometry.empty())
                         continue;
                     if (element["tags"].contains("waterway"))
-                        map.addElement(new Waterway(baseName, std::move(memberGeometry)));
+                        map.addElement(new Waterway(baseName, std::move(memberGeometry), element["tags"]["waterway"]));
                     else if (element["tags"].contains("highway"))
-                        map.addElement(new Highway(baseName, std::move(memberGeometry)));
+                        map.addElement(new Highway(baseName, std::move(memberGeometry), std::stoi(element["tags"].value("lanes", "1"))));
                     else {
                         bool isOuter = member.value("role", "outer") == "outer";
                         geometry.push_back(Ring{std::move(memberGeometry), isOuter});
