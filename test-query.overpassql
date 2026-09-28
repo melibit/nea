@@ -9,6 +9,8 @@ area["name"="Greater London"]["admin_level"="5"]->.searchArea;
   relation["waterway"="canal"](area.searchArea);
   way["waterway"="stream"](area.searchArea);
   relation["waterway"="stream"](area.searchArea);
+
+  relation["natural"="water"](area.searchArea);
   
   way["highway"~"primary|trunk"](area.searchArea);
   relation["highway"~"primary|trunk"](area.searchArea);

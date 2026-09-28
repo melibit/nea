@@ -227,6 +227,16 @@ public:
     const std::string& getName() const { return m_name; }
 };
 
+class Water : public Polygon {
+private:
+    std::string m_name;
+public:
+    Water(std::string name, std::vector<Ring> geometry)
+        : Polygon(std::move(geometry), BLRgba32(0xFFE3A34F)), m_name(name) {}
+
+    const std::string& getName() const { return m_name; }
+};
+
 class ScaleBar : public Element {
 private:
     float m_target_width;
@@ -357,6 +367,8 @@ public:
                         map.addElement(new Highway(baseName, std::move(geometry), std::stoi(element["tags"].value("lanes", "1"))));
                     else if (element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
                         map.addElement(new Park(baseName, std::vector<Ring>{ Ring{ std::move(geometry), true } }));
+                    else if (element["tags"].contains("natural") && element["tags"]["natural"] == "water")
+                        map.addElement(new Water(baseName, std::vector<Ring>{ Ring{ std::move(geometry), true } }));
                 }
             } 
             else if (element.contains("members") && element["members"].is_array()) {
@@ -388,6 +400,8 @@ public:
 
                 if (!geometry.empty() && element["tags"].contains("leisure") && element["tags"]["leisure"] == "park")
                     map.addElement(new Park(baseName, std::move(geometry)));
+                if (!geometry.empty() && element["tags"].contains("natural") && element["tags"]["natural"] == "water")
+                    map.addElement(new Water(baseName, std::move(geometry)));
             }
         }
 
